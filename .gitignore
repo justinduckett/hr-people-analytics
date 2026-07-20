@@ -1,0 +1,20 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets and config
+.env
+*.json
+!generators/**/*.json
+
+# Local data files
+data/
+
+# dbt artifacts
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+
+# Mac system files
+.DS_Store
