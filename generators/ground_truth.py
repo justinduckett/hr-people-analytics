@@ -45,13 +45,15 @@ class Person:
     personal_emails: list[str]      # ordered oldest to newest
     phone: str
     stints: list[Stint]
-    name_variant: str | None = None  # e.g. "Rob" for Robert, used by the ATS
+    name_variant: str | None = None      # e.g. "Rob" for Robert, used by the ATS
+    former_last_name: str | None = None  # pre-marriage name, used by the ATS
 
 
 def build_special_people() -> list[Person]:
     """The hand-built people who carry the planted problems.
     Each is constructed deliberately so we know exactly what the
-    pipeline should discover about them."""
+    pipeline should discover about them. One planted problem per
+    person, so a failed match always has one explanation."""
 
     people = []
 
@@ -115,7 +117,10 @@ def build_special_people() -> list[Person]:
     ))
 
     # ------------------------------------------------------------------
-    # P12 (the no show): TalentFlow believes Benjamin Hayes was hired (accepted offer, start date in the past) who never actually started.
+    # P12 (the no show): TalentFlow believes Benjamin Hayes was hired
+    # (accepted offer, start date in the past) but he never actually
+    # started. No stints: he never worked at Northline. Only the ATS
+    # generator will produce records for him.
     # ------------------------------------------------------------------
     people.append(Person(
         person_num=3,
@@ -123,7 +128,145 @@ def build_special_people() -> list[Person]:
         last_name="Hayes",
         personal_emails=["benjamin.hayes@gmail.com"],
         phone="647-543-9530",
+        stints=[],
+    ))
+
+    # ------------------------------------------------------------------
+    # P6 (nickname drift): Robert Chen goes by "Rob". He applied as
+    # "Robert" but HR entered him as "Rob" (or vice versa; the ATS
+    # generator uses name_variant). One continuous stint, hired after
+    # 2022 so he exists in BOTH systems. His only quirk is the name.
+    # ------------------------------------------------------------------
+    people.append(Person(
+        person_num=4,
+        first_name="Robert",
+        last_name="Chen",
+        personal_emails=["robert.chen@gmail.com"],
+        phone="905-423-5920",
         stints=[
+            Stint(
+                start_date=date(2023, 5, 15),
+                end_date=None,
+                assignments=[
+                    Assignment(date(2023, 5, 15), "Merchandising", "Merchandising Coordinator"),
+                    Assignment(date(2025, 4, 1), "Merchandising", "Senior Merchandising Coordinator"),
+                ],
+            ),
+        ],
+        name_variant="Rob",
+    ))
+
+    # ------------------------------------------------------------------
+    # P6 (last name change): Emily Tran married in 2025 and became
+    # Emily Foster. PeopleCore was updated to Foster; her TalentFlow
+    # application from 2023 still says Tran. Name matching alone fails;
+    # her personal email is the link.
+    # ------------------------------------------------------------------
+    people.append(Person(
+        person_num=5,
+        first_name="Emily",
+        last_name="Foster",
+        personal_emails=["emily.tran.93@gmail.com"],
+        phone="416-555-0227",
+        stints=[
+            Stint(
+                start_date=date(2023, 9, 5),
+                end_date=None,
+                assignments=[
+                    Assignment(date(2023, 9, 5), "Finance", "Financial Analyst"),
+                ],
+            ),
+        ],
+        former_last_name="Tran",
+    ))
+
+    # ------------------------------------------------------------------
+    # P5 (duplicate candidates): Priya Sharma applied in 2022 with her
+    # university email and was rejected. She applied again in 2024 with
+    # a new email and was hired. TalentFlow's deduplication missed it,
+    # so she exists as TWO candidate records. The ATS generator splits
+    # her emails across the two records.
+    # ------------------------------------------------------------------
+    people.append(Person(
+        person_num=6,
+        first_name="Priya",
+        last_name="Sharma",
+        personal_emails=["psharma@alumni.uwaterloo.ca", "priya.sharma.to@gmail.com"],
+        phone="647-555-0163",
+        stints=[
+            Stint(
+                start_date=date(2024, 6, 10),
+                end_date=None,
+                assignments=[
+                    Assignment(date(2024, 6, 10), "Marketing", "Marketing Coordinator"),
+                ],
+            ),
+        ],
+    ))
+
+    # ------------------------------------------------------------------
+    # P7 (work email collision): two different people, both named
+    # Sarah Lee, both currently employed. The HRIS generator gives the
+    # second one a suffixed work email (sarah.lee2@). Different personal
+    # emails and phones prove they are distinct humans. The pipeline
+    # must NOT merge them.
+    # ------------------------------------------------------------------
+    people.append(Person(
+        person_num=7,
+        first_name="Sarah",
+        last_name="Lee",
+        personal_emails=["sarahlee.416@gmail.com"],
+        phone="416-555-0244",
+        stints=[
+            Stint(
+                start_date=date(2019, 11, 4),
+                end_date=None,
+                assignments=[
+                    Assignment(date(2019, 11, 4), "People & Culture", "HR Coordinator"),
+                    Assignment(date(2023, 2, 20), "People & Culture", "HR Business Partner"),
+                ],
+            ),
+        ],
+    ))
+
+    people.append(Person(
+        person_num=8,
+        first_name="Sarah",
+        last_name="Lee",
+        personal_emails=["s.lee.designs@gmail.com"],
+        phone="289-555-0308",
+        stints=[
+            Stint(
+                start_date=date(2024, 3, 18),
+                end_date=None,
+                assignments=[
+                    Assignment(date(2024, 3, 18), "Retail Operations", "Visual Merchandiser"),
+                ],
+            ),
+        ],
+    ))
+
+    # ------------------------------------------------------------------
+    # P13 (start date disagreement): Marcus Osei's offer said he would
+    # start July 8, 2024, but his actual first day slipped to July 15.
+    # Ground truth records reality (July 15). The ATS generator will
+    # export the original offer start_date of July 8. The pipeline
+    # needs a tolerance rule to treat these as the same hire event.
+    # ------------------------------------------------------------------
+    people.append(Person(
+        person_num=9,
+        first_name="Marcus",
+        last_name="Osei",
+        personal_emails=["marcus.osei@gmail.com"],
+        phone="416-555-0371",
+        stints=[
+            Stint(
+                start_date=date(2024, 7, 15),
+                end_date=None,
+                assignments=[
+                    Assignment(date(2024, 7, 15), "Distribution", "Logistics Analyst"),
+                ],
+            ),
         ],
     ))
 
