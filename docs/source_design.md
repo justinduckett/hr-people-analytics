@@ -183,4 +183,7 @@ A running record of design decisions made during the build, so that future reade
 
 | Date | Decision | Reasoning |
 |---|---|---|
-| | | |
+| 2026-07 | Distortions live in the generators, not the ground truth | Ground truth describes reality; each generator describes one system's flawed perception of it. Keeps the answer key clean and puts each distortion next to the system that causes it.|
+| 2026-07 | One planted problem per special person | If a match fails, there is exactly one candidate explanation. Two problems on one person makes test results ambiguous.|
+| 2026-07 | Simulation clock frozen at a fixed date | Using the real date would change tenure and termination outcomes every run, breaking reproducibility in a way the random seed cannot prevent. |
+| 2026-07 | Trimmed planted problems from 13 to 10 | GDepth over breadth: a smaller set that can be explained confidently is worth more than full coverage. Cut the three least visible problems. |
