@@ -125,10 +125,10 @@ class Person:
 
 
 def build_special_people() -> list[Person]:
-    """The hand-built people who carry the planted problems.
-    Each is constructed deliberately so we know exactly what the
-    pipeline should discover about them. One planted problem per
-    person, so a failed match always has one explanation."""
+    """The hand-built people who carry the planted identity problems
+    (P4 through P7) and the no show (P10). Listed in problem order.
+    One planted problem per person, so a failed match always has one
+    explanation."""
 
     people = []
 
@@ -192,18 +192,27 @@ def build_special_people() -> list[Person]:
     ))
 
     # ------------------------------------------------------------------
-    # P12 (the no show): TalentFlow believes Benjamin Hayes was hired
-    # (accepted offer, start date in the past) but he never actually
-    # started. No stints: he never worked at Northline. Only the ATS
-    # generator will produce records for him.
+    # P5 (duplicate candidates): Priya Sharma applied in 2022 with her
+    # university email and was rejected. She applied again in 2024 with
+    # a new email and was hired. TalentFlow's deduplication missed it,
+    # so she exists as TWO candidate records. The ATS generator splits
+    # her emails across the two records.
     # ------------------------------------------------------------------
     people.append(Person(
         person_num=3,
-        first_name="Benjamin",
-        last_name="Hayes",
-        personal_emails=["benjamin.hayes@gmail.com"],
-        phone="647-543-9530",
-        stints=[],
+        first_name="Priya",
+        last_name="Sharma",
+        personal_emails=["psharma@alumni.uwaterloo.ca", "priya.sharma.to@gmail.com"],
+        phone="647-555-0163",
+        stints=[
+            Stint(
+                start_date=date(2024, 6, 10),
+                end_date=None,
+                assignments=[
+                    Assignment(date(2024, 6, 10), "Marketing", "Marketing Coordinator"),
+                ],
+            ),
+        ],
     ))
 
     # ------------------------------------------------------------------
@@ -256,30 +265,6 @@ def build_special_people() -> list[Person]:
     ))
 
     # ------------------------------------------------------------------
-    # P5 (duplicate candidates): Priya Sharma applied in 2022 with her
-    # university email and was rejected. She applied again in 2024 with
-    # a new email and was hired. TalentFlow's deduplication missed it,
-    # so she exists as TWO candidate records. The ATS generator splits
-    # her emails across the two records.
-    # ------------------------------------------------------------------
-    people.append(Person(
-        person_num=6,
-        first_name="Priya",
-        last_name="Sharma",
-        personal_emails=["psharma@alumni.uwaterloo.ca", "priya.sharma.to@gmail.com"],
-        phone="647-555-0163",
-        stints=[
-            Stint(
-                start_date=date(2024, 6, 10),
-                end_date=None,
-                assignments=[
-                    Assignment(date(2024, 6, 10), "Marketing", "Marketing Coordinator"),
-                ],
-            ),
-        ],
-    ))
-
-    # ------------------------------------------------------------------
     # P7 (work email collision): two different people, both named
     # Sarah Lee, both currently employed. The HRIS generator gives the
     # second one a suffixed work email (sarah.lee2@). Different personal
@@ -287,7 +272,7 @@ def build_special_people() -> list[Person]:
     # must NOT merge them.
     # ------------------------------------------------------------------
     people.append(Person(
-        person_num=7,
+        person_num=6,
         first_name="Sarah",
         last_name="Lee",
         personal_emails=["sarahlee.416@gmail.com"],
@@ -305,7 +290,7 @@ def build_special_people() -> list[Person]:
     ))
 
     people.append(Person(
-        person_num=8,
+        person_num=7,
         first_name="Sarah",
         last_name="Lee",
         personal_emails=["s.lee.designs@gmail.com"],
@@ -322,33 +307,24 @@ def build_special_people() -> list[Person]:
     ))
 
     # ------------------------------------------------------------------
-    # P13 (start date disagreement): Marcus Osei's offer said he would
-    # start July 8, 2024, but his actual first day slipped to July 15.
-    # Ground truth records reality (July 15). The ATS generator will
-    # export the original offer start_date of July 8. The pipeline
-    # needs a tolerance rule to treat these as the same hire event.
+    # P10 (the no show): TalentFlow believes Benjamin Hayes was hired
+    # (accepted offer, start date in the past) but he never actually
+    # started. No stints: he never worked at Northline. Only the ATS
+    # generator will produce records for him.
     # ------------------------------------------------------------------
     people.append(Person(
-        person_num=9,
-        first_name="Marcus",
-        last_name="Osei",
-        personal_emails=["marcus.osei@gmail.com"],
-        phone="416-555-0371",
-        stints=[
-            Stint(
-                start_date=date(2024, 7, 15),
-                end_date=None,
-                assignments=[
-                    Assignment(date(2024, 7, 15), "Distribution", "Logistics Analyst"),
-                ],
-            ),
-        ],
+        person_num=8,
+        first_name="Benjamin",
+        last_name="Hayes",
+        personal_emails=["benjamin.hayes@gmail.com"],
+        phone="647-543-9530",
+        stints=[],
     ))
 
     return people
 
 
-def build_random_people(count: int = 241, start_num: int = 10) -> list[Person]:
+def build_random_people(count: int = 242, start_num: int = 9) -> list[Person]:
     """The ordinary population around the special people. Random but
     reproducible: the seed fixes every choice, so every run produces
     the identical company."""
