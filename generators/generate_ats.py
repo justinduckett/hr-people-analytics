@@ -1,8 +1,18 @@
 """TalentFlow (ATS) generator.
 
-Consumes the ground truth and renders TalentFlow's imperfect view of
-it as data/candidates.json: one object per candidate with nested
-applications, covering only what a system adopted in 2022 could know.
+Consumes the ground truth and renders TalentFlow's export as of a
+given date: data/candidates.json, one object per candidate with
+nested applications, covering only what a system adopted in 2022
+could know by that date.
+
+Usage:
+    python generate_ats.py              # export as of the real today
+    python generate_ats.py 2026-08-15   # export as of a chosen date
+
+Application statuses evolve over time the way a real ATS's would:
+an application is invisible before its applied date, in_progress
+until its outcome date, and only then shows its final status
+(hired with an offer, or rejected/withdrawn).
 
 Distortions applied here:
 - P5: Priya Sharma appears as TWO candidate records (dedup failure)
@@ -10,17 +20,19 @@ Distortions applied here:
 - P9: phone numbers and email casing exported in inconsistent formats
 - P10: Benjamin Hayes has a hired application but never started
 - Plus realistic noise: rejected, withdrawn, and in-progress candidates
-  who never became employees
+  who never became employees. These exist only here, not in ground
+  truth, because they have no cross-system identity to verify.
 
-A principle worth noting: recoverable mess (formatting, casing) is
-applied to everyone including special people, because cleaning undoes
-it deterministically. Destructive mess (dropped fields, wrong values)
-never touches the specials, so their planted matching signals survive.
+Same honesty rules as the HRIS generator: recoverable mess (formats,
+casing) can touch anyone; destructive mess never touches specials;
+and every random choice is seeded per record, so IDs, names, and
+formatting are identical across runs and export dates.
 """
 
 import json
 import random
 import string
+import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -28,25 +40,34 @@ from faker import Faker
 
 from ground_truth import (
     DEPARTMENTS,
+    HORIZON,
     SEED,
-    SIM_TODAY,
     build_all_people,
 )
 
 OUTPUT_PATH = Path(__file__).resolve().parent.parent / "data" / "candidates.json"
 
 # TalentFlow was adopted at the start of 2022. It knows nothing about
-# anyone hired before this date (part of the P2/P3 asymmetry).
+# anyone hired before this date.
 TALENTFLOW_ADOPTED = date(2022, 1, 1)
 
 # Person numbers of specials this generator treats specially.
 PRIYA = 3      # P5: split into two candidate records
 BENJAMIN = 8   # P10: hired application, but he never started
 
+NOISE_COUNT = 200
 
-def make_id(prefix: str, rng: random.Random) -> str:
-    """IDs like cand_8f3k2 / app_x92m1: prefix plus 5 random
-    lowercase alphanumerics, the style many SaaS tools use."""
+
+def record_rng(*key_parts) -> random.Random:
+    """A random generator seeded by a stable key: identical output
+    for the same record on every run and every export date."""
+    return random.Random("|".join(str(p) for p in key_parts))
+
+
+def make_id(prefix: str, key: str) -> str:
+    """Stable IDs like cand_8f3k2 / app_x92m1, derived from the
+    record's key so they never change between exports."""
+    rng = record_rng(SEED, "id", prefix, key)
     alphabet = string.ascii_lowercase + string.digits
     suffix = "".join(rng.choice(alphabet) for _ in range(5))
     return f"{prefix}_{suffix}"
@@ -75,55 +96,80 @@ def messy_email(email: str, rng: random.Random) -> str:
     return email
 
 
-def application_for_hire(stint, rng: random.Random) -> dict:
-    """A hired application leading to the given stint: applied about
-    six weeks before the start date, offer accepted about two weeks
-    before."""
+# ----------------------------------------------------------------------
+# Application specs: timeless descriptions of each application's full
+# story (dates and final outcome). Rendering filters them by as_of.
+# ----------------------------------------------------------------------
+
+def hired_app_spec(key: str, stint) -> dict:
+    """The spec for an application that led to the given stint:
+    applied about six weeks before the start date, offer accepted
+    about two weeks before."""
+    rng = record_rng(SEED, "hired-app", key)
     start = stint.start_date
-    applied = start - timedelta(days=rng.randint(30, 55))
-    accepted = start - timedelta(days=rng.randint(10, 18))
     first = stint.assignments[0]
     return {
-        "application_id": None,  # filled by caller
+        "key": key,
+        "applied_at": start - timedelta(days=rng.randint(30, 55)),
+        "outcome_at": start - timedelta(days=rng.randint(10, 18)),
+        "final_status": "hired",
         "job_title": first.job_title,
         "department": first.department,
-        "applied_at": applied.isoformat(),
-        "status": "hired",
-        "offer": {
-            "accepted_at": accepted.isoformat(),
-            "start_date": start.isoformat(),
-        },
+        "start_date": start,
     }
 
 
-def noise_application(applied: date, rng: random.Random) -> dict:
-    """A non-hired application: rejected, withdrawn, or (if recent)
-    still in progress."""
-    department = rng.choice(list(DEPARTMENTS.keys()))
-    job_title = rng.choice(DEPARTMENTS[department][:2])
-    if (SIM_TODAY - applied).days < 60 and rng.random() < 0.5:
-        status = "in_progress"
-    else:
-        status = rng.choices(["rejected", "withdrawn"], weights=[75, 25], k=1)[0]
+def noise_app_spec(key: str, applied: date, department: str, job_title: str) -> dict:
+    """The spec for an application that went nowhere: resolved to
+    rejected or withdrawn a few weeks after it was filed."""
+    rng = record_rng(SEED, "noise-app", key)
     return {
-        "application_id": None,
+        "key": key,
+        "applied_at": applied,
+        "outcome_at": applied + timedelta(days=rng.randint(14, 60)),
+        "final_status": rng.choices(["rejected", "withdrawn"], weights=[75, 25], k=1)[0],
         "job_title": job_title,
         "department": department,
-        "applied_at": applied.isoformat(),
-        "status": status,
-        "offer": None,
+        "start_date": None,
     }
 
 
-def candidate_shell(first, last, email, phone, first_applied: date, rng) -> dict:
+def render_application(spec: dict, as_of: date) -> dict | None:
+    """The application as TalentFlow would show it on as_of: absent
+    before it was filed, in_progress until its outcome, then final."""
+    if spec["applied_at"] > as_of:
+        return None
+    if spec["outcome_at"] > as_of:
+        status = "in_progress"
+        offer = None
+    else:
+        status = spec["final_status"]
+        offer = None
+        if status == "hired":
+            offer = {
+                "accepted_at": spec["outcome_at"].isoformat(),
+                "start_date": spec["start_date"].isoformat(),
+            }
+    return {
+        "application_id": make_id("app", spec["key"]),
+        "job_title": spec["job_title"],
+        "department": spec["department"],
+        "applied_at": spec["applied_at"].isoformat(),
+        "status": status,
+        "offer": offer,
+    }
+
+
+def candidate_shell(key: str, first, last, email, phone, first_applied: date) -> dict:
     """The outer candidate object, with the P9 formatting mess
-    applied to the contact fields."""
+    applied to the contact fields (stable per candidate)."""
+    rng = record_rng(SEED, "shell", key)
     created = datetime(
         first_applied.year, first_applied.month, first_applied.day,
         rng.randint(8, 20), rng.randint(0, 59), rng.randint(0, 59),
     )
     return {
-        "candidate_id": make_id("cand", rng),
+        "candidate_id": make_id("cand", key),
         "first_name": first,
         "last_name": last,
         "personal_email": messy_email(email, rng),
@@ -133,10 +179,14 @@ def candidate_shell(first, last, email, phone, first_applied: date, rng) -> dict
     }
 
 
-def build_candidates_from_people(people, rng: random.Random) -> list[dict]:
-    """Candidates for real people: anyone whose employment stint
-    began after TalentFlow was adopted applied through it."""
-    candidates = []
+# ----------------------------------------------------------------------
+# Candidate specs from ground truth people
+# ----------------------------------------------------------------------
+
+def build_candidate_specs(people) -> list[dict]:
+    """Timeless candidate specs: shell info plus application specs.
+    Rendering per as_of happens later."""
+    specs = []
 
     for person in people:
         # The name TalentFlow holds: the one the candidate typed.
@@ -145,61 +195,61 @@ def build_candidates_from_people(people, rng: random.Random) -> list[dict]:
         last = person.former_last_name or person.last_name
 
         # --- Special case: Priya, the dedup failure (P5) -----------
-        # Her 2022 rejected application and her 2024 hired application
-        # were filed under different emails, so TalentFlow created two
-        # separate candidate records. Same phone: the clue that they
-        # are one person.
+        # Different emails on her two records; same phone, the clue
+        # that they are one person.
         if person.person_num == PRIYA:
             old_applied = date(2022, 5, 16)
-            rec1 = candidate_shell(
-                first, last, person.personal_emails[0], person.phone,
-                old_applied, rng,
-            )
-            app1 = noise_application(old_applied, rng)
-            app1["status"] = "rejected"
-            app1["department"] = "Marketing"
-            app1["job_title"] = "Marketing Coordinator"
-            app1["application_id"] = make_id("app", rng)
-            rec1["applications"].append(app1)
-            candidates.append(rec1)
-
+            specs.append({
+                "key": f"p{person.person_num}-a",
+                "first": first, "last": last,
+                "email": person.personal_emails[0],
+                "phone": person.phone,
+                "first_applied": old_applied,
+                "apps": [noise_app_spec(
+                    f"p{person.person_num}-a-1", old_applied,
+                    "Marketing", "Marketing Coordinator",
+                )],
+            })
             stint = person.stints[0]
-            rec2 = candidate_shell(
-                first, last, person.personal_emails[-1], person.phone,
-                stint.start_date - timedelta(days=40), rng,
-            )
-            app2 = application_for_hire(stint, rng)
-            app2["application_id"] = make_id("app", rng)
-            rec2["applications"].append(app2)
-            candidates.append(rec2)
+            hired = hired_app_spec(f"p{person.person_num}-b-1", stint)
+            specs.append({
+                "key": f"p{person.person_num}-b",
+                "first": first, "last": last,
+                "email": person.personal_emails[-1],
+                "phone": person.phone,
+                "first_applied": hired["applied_at"],
+                "apps": [hired],
+            })
             continue
 
         # --- Special case: Benjamin, the no show (P10) -------------
-        # TalentFlow believes he was hired in early 2025. He has no
-        # stints in ground truth: he never actually started.
+        # A fully hired application with a start date in the past,
+        # and no stints in ground truth: he never actually started.
         if person.person_num == BENJAMIN:
             fake_start = date(2025, 3, 3)
-            rec = candidate_shell(
-                first, last, person.personal_emails[0], person.phone,
-                fake_start - timedelta(days=45), rng,
-            )
-            app = {
-                "application_id": make_id("app", rng),
-                "job_title": "Customer Care Representative",
-                "department": "Customer Experience",
-                "applied_at": (fake_start - timedelta(days=45)).isoformat(),
-                "status": "hired",
-                "offer": {
-                    "accepted_at": (fake_start - timedelta(days=14)).isoformat(),
-                    "start_date": fake_start.isoformat(),
-                },
-            }
-            rec["applications"].append(app)
-            candidates.append(rec)
+            key = f"p{person.person_num}"
+            rng = record_rng(SEED, "benjamin", key)
+            applied = fake_start - timedelta(days=45)
+            specs.append({
+                "key": key,
+                "first": first, "last": last,
+                "email": person.personal_emails[0],
+                "phone": person.phone,
+                "first_applied": applied,
+                "apps": [{
+                    "key": f"{key}-1",
+                    "applied_at": applied,
+                    "outcome_at": fake_start - timedelta(days=14),
+                    "final_status": "hired",
+                    "job_title": "Customer Care Representative",
+                    "department": "Customer Experience",
+                    "start_date": fake_start,
+                }],
+            })
             continue
 
         # --- The general case -------------------------------------
-        # One candidate record per person, holding a hired application
+        # One candidate record per person, with a hired application
         # for each stint that began in the TalentFlow era.
         ats_stints = [
             (i, s) for i, s in enumerate(person.stints)
@@ -212,38 +262,50 @@ def build_candidates_from_people(people, rng: random.Random) -> list[dict]:
         email_index = min(first_index, len(person.personal_emails) - 1)
         email = person.personal_emails[email_index]
 
-        rec = candidate_shell(
-            first, last, email, person.phone,
-            first_stint.start_date - timedelta(days=40), rng,
-        )
-        for stint_index, stint in ats_stints:
-            app = application_for_hire(stint, rng)
-            app["application_id"] = make_id("app", rng)
-            rec["applications"].append(app)
+        apps = [
+            hired_app_spec(f"p{person.person_num}-{i}", s)
+            for i, s in ats_stints
+        ]
 
         # Realism: some hired people also applied unsuccessfully
-        # earlier (a rejected application in their history).
-        if rng.random() < 0.15:
-            earlier = first_stint.start_date - timedelta(days=rng.randint(200, 700))
+        # earlier (deterministic per person, never specials since
+        # extra applications could muddy their planted signals).
+        rng = record_rng(SEED, "extra-app", person.person_num)
+        if person.person_num > 8 and rng.random() < 0.15:
+            earlier = apps[0]["applied_at"] - timedelta(days=rng.randint(200, 700))
             if earlier >= TALENTFLOW_ADOPTED:
-                app = noise_application(earlier, rng)
-                app["application_id"] = make_id("app", rng)
-                rec["applications"].insert(0, app)
+                dept = rng.choice(list(DEPARTMENTS.keys()))
+                apps.insert(0, noise_app_spec(
+                    f"p{person.person_num}-x", earlier,
+                    dept, DEPARTMENTS[dept][0],
+                ))
 
-        candidates.append(rec)
+        specs.append({
+            "key": f"p{person.person_num}",
+            "first": first, "last": last,
+            "email": email,
+            "phone": person.phone,
+            "first_applied": apps[0]["applied_at"],
+            "apps": apps,
+        })
 
-    return candidates
+    return specs
 
 
-def build_noise_candidates(count: int, rng: random.Random, reserved_names) -> list[dict]:
+def build_noise_specs(reserved_names) -> list[dict]:
     """Candidates who never became employees: the rejected, the
-    withdrawn, and the still-in-progress. Most of any real ATS."""
+    withdrawn, and the in-progress. Most of any real ATS. Generated
+    here rather than in ground truth because they have no
+    cross-system identity to verify."""
     Faker.seed(SEED + 3)
     fake = Faker("en_CA")
-    candidates = []
+    rng = random.Random(SEED + 3)
     used = set(reserved_names)
+    specs = []
 
-    for _ in range(count):
+    span_days = (HORIZON - TALENTFLOW_ADOPTED).days
+
+    for i in range(NOISE_COUNT):
         while True:
             first = fake.first_name()
             last = fake.last_name()
@@ -251,54 +313,83 @@ def build_noise_candidates(count: int, rng: random.Random, reserved_names) -> li
                 used.add((first, last))
                 break
 
-        days_back = rng.randint(14, (SIM_TODAY - TALENTFLOW_ADOPTED).days)
-        applied = SIM_TODAY - timedelta(days=days_back)
+        applied = TALENTFLOW_ADOPTED + timedelta(days=rng.randint(0, span_days - 30))
         email = f"{first.lower()}.{last.lower()}{rng.randint(1, 999)}@{rng.choice(['gmail.com', 'hotmail.com', 'outlook.com', 'yahoo.ca'])}"
         phone = f"{rng.choice(['416', '647', '905', '289'])}-555-{rng.randint(0, 9999):04d}"
 
-        rec = candidate_shell(first, last, email, phone, applied, rng)
-        app = noise_application(applied, rng)
-        app["application_id"] = make_id("app", rng)
-        rec["applications"].append(app)
+        dept = rng.choice(list(DEPARTMENTS.keys()))
+        apps = [noise_app_spec(f"n{i}-1", applied, dept, rng.choice(DEPARTMENTS[dept][:2]))]
 
         # Some persistent candidates applied twice.
         if rng.random() < 0.2:
             applied2 = applied + timedelta(days=rng.randint(60, 400))
-            if applied2 < SIM_TODAY:
-                app2 = noise_application(applied2, rng)
-                app2["application_id"] = make_id("app", rng)
-                rec["applications"].append(app2)
+            if applied2 < HORIZON:
+                dept2 = rng.choice(list(DEPARTMENTS.keys()))
+                apps.append(noise_app_spec(f"n{i}-2", applied2, dept2, DEPARTMENTS[dept2][0]))
 
-        candidates.append(rec)
+        specs.append({
+            "key": f"n{i}",
+            "first": first, "last": last,
+            "email": email,
+            "phone": phone,
+            "first_applied": applied,
+            "apps": apps,
+        })
 
-    return candidates
+    return specs
+
+
+def render_candidates(specs: list[dict], as_of: date) -> list[dict]:
+    """Render every candidate visible by as_of, with each application
+    in its as-of state."""
+    rendered = []
+    for spec in specs:
+        apps = [render_application(a, as_of) for a in spec["apps"]]
+        apps = [a for a in apps if a is not None]
+        if not apps:
+            continue  # candidate has not applied yet as of this date
+        rec = candidate_shell(
+            spec["key"], spec["first"], spec["last"],
+            spec["email"], spec["phone"], spec["first_applied"],
+        )
+        rec["applications"] = apps
+        rendered.append(rec)
+    return rendered
+
+
+def parse_as_of() -> date:
+    if len(sys.argv) > 1:
+        as_of = date.fromisoformat(sys.argv[1])
+    else:
+        as_of = date.today()
+    return min(as_of, HORIZON)
 
 
 if __name__ == "__main__":
-    rng = random.Random(SEED + 4)
+    as_of = parse_as_of()
     people = build_all_people()
 
-    from_people = build_candidates_from_people(people, rng)
+    specs = build_candidate_specs(people)
     reserved = {(p.first_name, p.last_name) for p in people}
-    noise = build_noise_candidates(140, rng, reserved)
+    specs += build_noise_specs(reserved)
 
-    candidates = from_people + noise
-    # Shuffle so real hires and noise are interleaved like a real
-    # export, not two neat blocks.
-    rng.shuffle(candidates)
+    # Stable shuffle so real hires and noise are interleaved like a
+    # real export, identically on every run.
+    random.Random(SEED + 4).shuffle(specs)
+
+    candidates = render_candidates(specs, as_of)
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(OUTPUT_PATH, "w") as f:
         json.dump(candidates, f, indent=2)
 
-    print(f"Wrote {len(candidates)} candidates to {OUTPUT_PATH}")
-    hired = sum(
-        1 for c in candidates
-        for a in c["applications"] if a["status"] == "hired"
-    )
-    print(f"Hired applications: {hired}")
+    print(f"Export as of {as_of}: {len(candidates)} candidates -> {OUTPUT_PATH}")
+    statuses = {}
+    for c in candidates:
+        for a in c["applications"]:
+            statuses[a["status"]] = statuses.get(a["status"], 0) + 1
+    print(f"Application statuses: {statuses}")
 
-    # Spot checks on the planted problems.
     def find(last_name, first_name=None):
         return [
             c for c in candidates
@@ -306,27 +397,20 @@ if __name__ == "__main__":
             and (first_name is None or c["first_name"] == first_name)
         ]
 
-    priya = find("Sharma")
-    print(f"\nP5 check, Priya should be TWO records, different emails, same phone:")
-    for c in priya:
+    print("\nP5 check, Priya should be TWO records, different emails, same phone:")
+    for c in find("Sharma"):
         print(f"  {c['candidate_id']}: {c['personal_email']} / {c['phone']}")
 
-    rob = find("Chen")
-    print(f"\nP6 check, Chen's first name should be the nickname:")
-    for c in rob:
+    print("\nP6 check, Chen's first name should be the nickname:")
+    for c in find("Chen"):
         print(f"  {c['first_name']} {c['last_name']}")
 
-    emily = find("Tran")
-    print(f"\nP6 check, Emily should appear under maiden name Tran:")
-    for c in emily:
+    print("\nP6 check, Emily should appear under maiden name Tran:")
+    for c in find("Tran"):
         print(f"  {c['first_name']} {c['last_name']} ({c['personal_email']})")
 
-    ben = find("Hayes", "Benjamin")
-    print(f"\nP10 check, Benjamin should have a hired application:")
-    for c in ben:
+    print("\nP10 check, Benjamin should have a hired application:")
+    for c in find("Hayes", "Benjamin"):
         for a in c["applications"]:
-            print(f"  status={a['status']}, start={a['offer']['start_date'] if a['offer'] else None}")
-
-    print(f"\nP9 check, phone format variety (first 6):")
-    for c in candidates[:6]:
-        print(f"  {c['phone']}")
+            start = a["offer"]["start_date"] if a["offer"] else None
+            print(f"  status={a['status']}, start={start}")

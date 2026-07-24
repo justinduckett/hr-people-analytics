@@ -18,9 +18,12 @@ from faker import Faker
 # problems, every time. Any constant works.
 SEED = 42
 
-# The simulation's "today". Frozen so the data never drifts as real
-# time passes: a run next month produces identical files to a run now.
-SIM_TODAY = date(2026, 7, 1)
+# The simulation horizon: the last day of pre-written history. The
+# company's full story is scripted up to this date. Each pipeline run
+# exports only the events that have "happened" by the run date, so as
+# real days pass, scripted events cross the threshold and appear.
+# Frozen so regeneration always produces the identical company.
+HORIZON = date(2027, 12, 31)
 
 # Department catalog. Each department has a career ladder, ordered
 # junior to senior, so promotions can pick "the next title up".
@@ -324,7 +327,7 @@ def build_special_people() -> list[Person]:
     return people
 
 
-def build_random_people(count: int = 242, start_num: int = 9) -> list[Person]:
+def build_random_people(count: int = 300, start_num: int = 9) -> list[Person]:
     """The ordinary population around the special people. Random but
     reproducible: the seed fixes every choice, so every run produces
     the identical company."""
@@ -359,18 +362,19 @@ def build_random_people(count: int = 242, start_num: int = 9) -> list[Person]:
         department = rng.choices(dept_names, weights=dept_weights, k=1)[0]
         ladder = DEPARTMENTS[department]
 
-        # Hire date: any day from 2015 through mid 2026, weighted
-        # toward recent years to mimic company growth.
+        # Hire date: any day from 2015 through late 2027, weighted
+        # toward recent years to mimic company growth. Hires after the
+        # real today are the future script the daily pipeline reveals.
         year = rng.choices(
-            list(range(2015, 2027)),
-            weights=[2, 2, 3, 3, 4, 5, 6, 7, 8, 9, 10, 4],
+            list(range(2015, 2028)),
+            weights=[2, 2, 3, 3, 4, 5, 6, 7, 8, 9, 10, 10, 8],
             k=1,
         )[0]
         month = rng.randint(1, 12)
         day = rng.randint(1, 28)
         hire_date = date(year, month, day)
-        if hire_date > SIM_TODAY - timedelta(days=14):
-            hire_date = SIM_TODAY - timedelta(days=14)
+        if hire_date > HORIZON - timedelta(days=14):
+            hire_date = HORIZON - timedelta(days=14)
 
         # Employment type: stores and warehouse lean part time.
         if department in ("Retail Operations", "Distribution"):
@@ -388,7 +392,7 @@ def build_random_people(count: int = 242, start_num: int = 9) -> list[Person]:
 
         # Maybe a promotion, if they have been around at least 2 years
         # and the ladder has a next rung.
-        tenure_days = (SIM_TODAY - hire_date).days
+        tenure_days = (HORIZON - hire_date).days
         if (
             tenure_days > 730
             and start_level + 1 < len(ladder)
