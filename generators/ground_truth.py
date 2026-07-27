@@ -327,7 +327,7 @@ def build_special_people() -> list[Person]:
     return people
 
 
-def build_random_people(count: int = 300, start_num: int = 9) -> list[Person]:
+def build_random_people(count: int = 320, start_num: int = 9) -> list[Person]:
     """The ordinary population around the special people. Random but
     reproducible: the seed fixes every choice, so every run produces
     the identical company."""
@@ -367,53 +367,102 @@ def build_random_people(count: int = 300, start_num: int = 9) -> list[Person]:
         # real today are the future script the daily pipeline reveals.
         year = rng.choices(
             list(range(2015, 2028)),
-            weights=[2, 2, 3, 3, 4, 5, 6, 7, 8, 9, 10, 10, 8],
+            weights=[2, 2, 3, 3, 4, 5, 6, 7, 8, 9, 10, 11, 14],
             k=1,
         )[0]
-        month = rng.randint(1, 12)
+
+        # Hire month: frontline departments hire in a strong seasonal
+        # pattern, ramping up for the holidays every year. Head office
+        # hires year round.
+        frontline = department in ("Retail Operations", "Distribution")
+        if frontline:
+            month = rng.choices(
+                list(range(1, 13)),
+                weights=[5, 5, 6, 7, 7, 6, 6, 7, 9, 14, 16, 5],
+                k=1,
+            )[0]
+        else:
+            month = rng.randint(1, 12)
         day = rng.randint(1, 28)
         hire_date = date(year, month, day)
         if hire_date > HORIZON - timedelta(days=14):
             hire_date = HORIZON - timedelta(days=14)
-
-        # Employment type: stores and warehouse lean part time.
-        if department in ("Retail Operations", "Distribution"):
-            employment_type = rng.choices(
-                ["FT", "PT", "Contract"], weights=[55, 40, 5], k=1
-            )[0]
-        else:
-            employment_type = rng.choices(
-                ["FT", "PT", "Contract"], weights=[85, 8, 7], k=1
-            )[0]
-
-        # Start at the bottom of the ladder, mostly.
-        start_level = 0 if rng.random() < 0.8 else min(1, len(ladder) - 1)
-        assignments = [Assignment(hire_date, department, ladder[start_level])]
-
-        # Maybe a promotion, if they have been around at least 2 years
-        # and the ladder has a next rung.
         tenure_days = (HORIZON - hire_date).days
-        if (
-            tenure_days > 730
-            and start_level + 1 < len(ladder)
-            and rng.random() < 0.4
-        ):
-            promo_date = hire_date + timedelta(
-                days=rng.randint(365, min(tenure_days, 1460))
-            )
-            assignments.append(
-                Assignment(promo_date, department, ladder[start_level + 1])
-            )
 
-        # Has this stint ended? Churn depends on department, and very
-        # recent hires have not had time to leave.
-        turnover = DEPARTMENT_TURNOVER.get(department, DEFAULT_TURNOVER)
-        end_date = None
-        if tenure_days > 120 and rng.random() < turnover:
-            end_offset = rng.randint(90, tenure_days - 14)
-            end_date = hire_date + timedelta(days=end_offset)
-            # A termination truncates history: drop any promotion that
-            # would have happened after they left.
+        # Seasonal contracts: a large share of the Oct/Nov frontline
+        # wave is holiday staffing that ends the following January.
+        # This is the repeating rhythm on the headcount chart.
+        seasonal = frontline and month in (10, 11) and rng.random() < 0.45
+
+        if seasonal:
+            employment_type = rng.choices(["PT", "Contract"], weights=[60, 40], k=1)[0]
+            assignments = [Assignment(hire_date, department, ladder[0])]
+            jan_end = date(year + 1, 1, rng.randint(3, 24))
+            # A seasonal contract ending beyond the horizon is simply
+            # still running when the script ends.
+            end_date = jan_end if jan_end <= HORIZON else None
+        else:
+            # Employment type: stores and warehouse lean part time.
+            if frontline:
+                employment_type = rng.choices(
+                    ["FT", "PT", "Contract"], weights=[55, 40, 5], k=1
+                )[0]
+            else:
+                employment_type = rng.choices(
+                    ["FT", "PT", "Contract"], weights=[85, 8, 7], k=1
+                )[0]
+
+            # Start at the bottom of the ladder, mostly.
+            start_level = 0 if rng.random() < 0.8 else min(1, len(ladder) - 1)
+            assignments = [Assignment(hire_date, department, ladder[start_level])]
+
+            # One mid-career event for longer tenures: a promotion up
+            # the ladder, or a transfer to a different department.
+            # Transfers are what make department-level history move,
+            # and they are the events SCD type 2 exists to capture.
+            event_roll = rng.random()
+            if tenure_days > 730:
+                if event_roll < 0.35 and start_level + 1 < len(ladder):
+                    promo_date = hire_date + timedelta(
+                        days=rng.randint(365, min(tenure_days, 1460))
+                    )
+                    assignments.append(
+                        Assignment(promo_date, department, ladder[start_level + 1])
+                    )
+                elif event_roll < 0.50:
+                    new_dept = rng.choice(
+                        [d for d in DEPARTMENTS if d != department]
+                    )
+                    transfer_date = hire_date + timedelta(
+                        days=rng.randint(400, min(tenure_days, 1500))
+                    )
+                    new_ladder = DEPARTMENTS[new_dept]
+                    assignments.append(
+                        Assignment(transfer_date, new_dept, new_ladder[min(1, len(new_ladder) - 1)])
+                    )
+
+            # Has this stint ended? Churn depends on department, and
+            # very recent hires have not had time to leave.
+            turnover = DEPARTMENT_TURNOVER.get(department, DEFAULT_TURNOVER)
+            end_date = None
+            if tenure_days > 120 and rng.random() < turnover:
+                end_offset = rng.randint(90, tenure_days - 14)
+                end_date = hire_date + timedelta(days=end_offset)
+
+            # Broadcast-window churn boost: extra scripted departures
+            # between Aug 2026 and the horizon, so a few weeks of
+            # daily pipeline runs reliably captures real changes.
+            broadcast_start = date(2026, 8, 1)
+            if end_date is None and rng.random() < 0.08:
+                window_open = max(hire_date + timedelta(days=120), broadcast_start)
+                window_close = HORIZON - timedelta(days=21)
+                if window_open < window_close:
+                    span = (window_close - window_open).days
+                    end_date = window_open + timedelta(days=rng.randint(0, span))
+
+        # A termination truncates history: drop any event that would
+        # have happened after they left.
+        if end_date is not None:
             assignments = [a for a in assignments if a.effective_date <= end_date]
 
         # Contact details. Ground truth stores clean, consistent
@@ -486,3 +535,23 @@ if __name__ == "__main__":
             dept_counts[dept] = dept_counts.get(dept, 0) + 1
     for dept, n in sorted(dept_counts.items(), key=lambda kv: -kv[1]):
         print(f"  {dept}: {n}")
+
+    # Broadcast window: the events a daily pipeline will reveal as
+    # real time passes.
+    window_start = date(2026, 7, 24)
+    hires = terms = role_changes = 0
+    for p in everyone:
+        for s in p.stints:
+            if s.start_date > window_start:
+                hires += 1
+            if s.end_date is not None and s.end_date > window_start:
+                terms += 1
+            for a in s.assignments[1:]:
+                if a.effective_date > window_start:
+                    role_changes += 1
+    print(f"\nScripted events after {window_start} (the broadcast window):")
+    print(f"  Hires: {hires}")
+    print(f"  Terminations: {terms}")
+    print(f"  Promotions and transfers: {role_changes}")
+    total_weeks = (HORIZON - window_start).days / 7
+    print(f"  Roughly {(hires + terms + role_changes) / total_weeks:.1f} events per week")
