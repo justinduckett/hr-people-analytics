@@ -1,0 +1,21 @@
+version: 2
+
+sources:
+  - name: hr_raw
+    description: >
+      Raw landing zone for the two Northline source systems, loaded
+      daily by the Prefect ingestion flow. Tables are full replacements
+      of each nightly export, untouched by any transformation.
+    database: hr-people-analytics-503215
+    schema: hr_raw
+    tables:
+      - name: peoplecore_employees
+        description: >
+          PeopleCore (HRIS) nightly export. One row per employment
+          record, not per person: a rehired employee appears as two
+          unrelated rows.
+      - name: talentflow_candidates
+        description: >
+          TalentFlow (ATS) export. One row per candidate with
+          applications as a nested repeated record. Contains
+          candidates who were never hired.
