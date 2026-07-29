@@ -12,9 +12,9 @@ __pycache__/
 data/
 
 # dbt artifacts
-dbt/target/
-dbt/logs/
-dbt/dbt_packages/
+dbt/**/target/
+dbt/**/logs/
+dbt/**/dbt_packages/
 
 # Mac system files
 .DS_Store
