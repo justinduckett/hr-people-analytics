@@ -1,0 +1,24 @@
+version: 2
+
+models:
+  - name: stg_peoplecore__employees
+    description: >
+      PeopleCore employment records, cleaned and typed. Grain: one row
+      per employment record (employee_id). A rehired person still
+      appears as two rows; resolving that is the identity layer's job.
+    columns:
+      - name: employee_id
+        description: PeopleCore's employment record identifier.
+        tests:
+          - unique
+          - not_null
+      - name: department
+        description: >
+          Standardized department name via the department_mapping
+          seed. Null means a new unmapped variant appeared in the
+          source, which fails the not_null test loudly.
+        tests:
+          - not_null
+      - name: work_email
+        tests:
+          - not_null
