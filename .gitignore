@@ -11,10 +11,10 @@ __pycache__/
 # Local data files
 data/
 
-# dbt artifacts
-dbt/**/target/
-dbt/**/logs/
-dbt/**/dbt_packages/
+# dbt artifacts (wherever dbt is invoked from)
+logs/
+target/
+dbt_packages/
 
 # Mac system files
 .DS_Store
