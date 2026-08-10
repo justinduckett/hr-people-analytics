@@ -1,0 +1,20 @@
+version: 2
+
+models:
+  - name: dim_person
+    description: >
+      The canonical person record: one row per resolved human being
+      who has ever been employed at Northline. Current-state fields
+      come from the person's most recent employment record;
+      first_hire_date reaches across rehires to their true start.
+    columns:
+      - name: person_key
+        tests:
+          - unique
+          - not_null
+      - name: first_hire_date
+        tests:
+          - not_null
+      - name: is_rehire
+        tests:
+          - not_null

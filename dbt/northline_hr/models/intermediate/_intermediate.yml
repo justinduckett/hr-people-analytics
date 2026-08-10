@@ -32,3 +32,4 @@ models:
         tests:
           - accepted_values:
               values: [false]
+              quote: false
