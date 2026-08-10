@@ -1,0 +1,18 @@
+version: 2
+
+models:
+  - name: int_peoplecore__person_map
+    description: >
+      Maps every PeopleCore employment record to a canonical
+      person_key. Grain: one row per employee_id. Records sharing a
+      person_key are one human. Match rules: shared personal email;
+      same name with strictly sequential employment. Concurrent
+      same-name records never link.
+    columns:
+      - name: employee_id
+        tests:
+          - unique
+          - not_null
+      - name: person_key
+        tests:
+          - not_null
