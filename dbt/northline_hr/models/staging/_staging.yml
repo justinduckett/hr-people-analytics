@@ -22,3 +22,35 @@ models:
       - name: work_email
         tests:
           - not_null
+
+  - name: stg_talentflow__candidates
+    description: >
+      TalentFlow candidates, cleaned and typed. Grain: one row per
+      candidate record. TalentFlow's deduplication is imperfect, so
+      one human can hold two candidate records; resolving that is the
+      identity layer's job, not staging's.
+    columns:
+      - name: candidate_id
+        tests:
+          - unique
+          - not_null
+      - name: phone
+        description: Last 10 digits after stripping formatting (P9 standardization).
+
+  - name: stg_talentflow__applications
+    description: >
+      One row per application, unnested from the candidates export.
+      Offer columns are null for applications that never reached an
+      accepted offer.
+    columns:
+      - name: application_id
+        tests:
+          - unique
+          - not_null
+      - name: candidate_id
+        tests:
+          - not_null
+      - name: status
+        tests:
+          - accepted_values:
+              values: ['rejected', 'withdrawn', 'in_progress', 'hired']
