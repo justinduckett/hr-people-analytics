@@ -18,3 +18,30 @@ models:
       - name: is_rehire
         tests:
           - not_null
+
+  - name: dim_date
+    description: >
+      One row per calendar day from 2015-01-01 through today. The
+      spine that point-in-time facts join onto.
+    columns:
+      - name: date_day
+        tests:
+          - unique
+          - not_null
+
+  - name: fct_headcount_daily
+    description: >
+      Daily headcount by department and employment type. Grain: one
+      row per date per department per employment type with at least
+      one employed person. Definition: employed on day D means
+      hire_date <= D and (termination_date is null or > D), so the
+      termination date itself is the first day NOT counted. Reflects
+      current department per record; historical department for
+      transferred employees awaits the SCD2 snapshot layer.
+    columns:
+      - name: date_day
+        tests:
+          - not_null
+      - name: headcount
+        tests:
+          - not_null
