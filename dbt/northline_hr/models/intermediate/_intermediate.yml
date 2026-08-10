@@ -16,3 +16,19 @@ models:
       - name: person_key
         tests:
           - not_null
+
+  - name: int_talentflow__person_match
+    description: >
+      Maps each TalentFlow candidate to a canonical person_key where
+      one can be justified. Grain: one row per candidate_id. Null
+      person_key means no defensible link to any employment record,
+      which is the correct verdict for never-hired candidates.
+    columns:
+      - name: candidate_id
+        tests:
+          - unique
+          - not_null
+      - name: is_ambiguous
+        tests:
+          - accepted_values:
+              values: [false]
