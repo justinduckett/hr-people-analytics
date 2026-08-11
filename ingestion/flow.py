@@ -94,6 +94,21 @@ def load_ats(as_of: str) -> int:
     logger.info(f"Loaded {rows} candidates into {table_id}")
     return rows
 
+@task
+def run_dbt() -> None:
+    """Run the full dbt build: models, tests, seeds, and snapshots,
+    in dependency order. No retries: a dbt failure means bad data or
+    broken logic, and rerunning won't change either."""
+    logger = get_run_logger()
+    result = subprocess.run(
+        ["dbt", "build"],
+        cwd=PROJECT_ROOT / "dbt" / "northline_hr",
+        capture_output=True,
+        text=True,
+    )
+    logger.info(result.stdout)
+    if result.returncode != 0:
+        raise RuntimeError("dbt build failed; see log above for the failing step")
 
 @flow(name="hr-daily-ingestion")
 def hr_ingestion(as_of: str | None = None) -> None:
@@ -108,6 +123,8 @@ def hr_ingestion(as_of: str | None = None) -> None:
     ats_future = load_ats.submit(as_of)
     hris_rows = hris_future.result()
     ats_rows = ats_future.result()
+
+    run_dbt()
 
     logger = get_run_logger()
     logger.info(f"Ingestion complete for {as_of}: "
