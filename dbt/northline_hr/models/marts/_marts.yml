@@ -45,3 +45,23 @@ models:
       - name: headcount
         tests:
           - not_null
+
+  - name: fct_headcount_monthly
+    description: >
+      Month-end headcount snapshot by department and employment type.
+      One row per month per department per type. Use for trend charts:
+      each month has exactly one headcount, sampled on its last
+      available day, so no cross-day aggregation is needed.
+    columns:
+      - name: headcount
+        tests:
+          - not_null
+
+  - name: fct_headcount_current
+    description: >
+      Headcount as of the most recent date, by department and
+      employment type. Powers all current-state tiles.
+    columns:
+      - name: headcount
+        tests:
+          - not_null
