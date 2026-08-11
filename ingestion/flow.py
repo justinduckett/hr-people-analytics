@@ -132,4 +132,7 @@ def hr_ingestion(as_of: str | None = None) -> None:
 
 
 if __name__ == "__main__":
-    hr_ingestion(sys.argv[1] if len(sys.argv) > 1 else None)
+    if len(sys.argv) > 1 and sys.argv[1] == "serve":
+        hr_ingestion.serve(name="hr-daily")
+    else:
+        hr_ingestion(sys.argv[1] if len(sys.argv) > 1 else None)
