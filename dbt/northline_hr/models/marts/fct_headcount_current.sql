@@ -15,6 +15,7 @@ latest as (
 )
 
 select
+    daily.date_day,
     daily.department,
     daily.employment_type,
     daily.headcount
