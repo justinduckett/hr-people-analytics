@@ -65,3 +65,24 @@ models:
       - name: headcount
         tests:
           - not_null
+
+  - name: fct_employment_events
+    description: >
+      Hires and terminations as discrete events. Grain: one row per
+      employment event (each employment record contributes one hire,
+      and one termination if it has ended). Additive: safe to count
+      over any period. The is_rehire_event flag marks a person's
+      second or later hire, which is only identifiable after identity
+      resolution links employment records the source system keeps
+      separate.
+    columns:
+      - name: event_date
+        tests:
+          - not_null
+      - name: event_type
+        tests:
+          - accepted_values:
+              values: ['hire', 'termination']
+      - name: person_key
+        tests:
+          - not_null
