@@ -86,3 +86,23 @@ models:
       - name: person_key
         tests:
           - not_null
+
+  - name: dim_department
+    description: >
+      One row per standardized department, with grouping attributes
+      for analysis. Sourced from the department_mapping seed, so the
+      department list and the source-system spelling standardization
+      share one definition. Facts carry department_name directly;
+      this dimension is the source of truth for department attributes.
+    columns:
+      - name: department_key
+        tests:
+          - unique
+          - not_null
+      - name: department_name
+        tests:
+          - unique
+          - not_null
+      - name: division
+        tests:
+          - not_null
