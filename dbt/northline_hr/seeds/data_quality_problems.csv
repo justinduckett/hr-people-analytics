@@ -1,11 +1,11 @@
 id,problem,what_the_pipeline_does
-P1,Sources arrive in different formats (CSV and nested JSON),Staging models conform both into typed tables and unnest the JSON applications
-P2,No source table is one row per person,A canonical person record is built by resolving records across and within systems
-P3,Exports show current state only with no history,Snapshots capture changes over time into a slowly changing dimension
-P4,Rehired employees get a new ID with nothing linking the two records,Identity resolution links them by shared email or by same name with sequential employment
-P5,One person exists as two candidate records in the recruiting system,Deduplication by matching name and standardized phone number
-P6,Names differ between systems (nicknames and married names),Matching leads with email so it survives any name change
-P7,Two different employees share a name and get colliding work emails,Concurrent same-name records are never merged and a uniqueness test enforces it
-P8,Department names drift across spellings and casing,A mapping table standardizes them with a test that fails on unmapped values
-P9,Phone numbers and emails arrive in inconsistent formats,Standardized in staging before any matching runs
+P01,Sources arrive in different formats (CSV and nested JSON),Staging models conform both into typed tables and unnest the JSON applications
+P02,No source table is one row per person,A canonical person record is built by resolving records across and within systems
+P03,Exports show current state only with no history,Snapshots capture changes over time into a slowly changing dimension
+P04,Rehired employees get a new ID with nothing linking the two records,Identity resolution links them by shared email or by same name with sequential employment
+P05,One person exists as two candidate records in the recruiting system,Deduplication by matching name and standardized phone number
+P06,Names differ between systems (nicknames and married names),Matching leads with email so it survives any name change
+P07,Two different employees share a name and get colliding work emails,Concurrent same-name records are never merged and a uniqueness test enforces it
+P08,Department names drift across spellings and casing,A mapping table standardizes them with a test that fails on unmapped values
+P09,Phone numbers and emails arrive in inconsistent formats,Standardized in staging before any matching runs
 P10,A candidate marked hired never appears in the HR system,The HR system is treated as the system of record for employment
