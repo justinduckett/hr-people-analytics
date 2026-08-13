@@ -97,8 +97,10 @@ all_matches as (
 select
     candidates.candidate_id,
     min(all_matches.person_key)  as person_key,
-    string_agg(distinct all_matches.match_rule order by all_matches.match_rule)
-                                 as match_basis,
+    coalesce(
+        string_agg(distinct all_matches.match_rule order by all_matches.match_rule),
+        'no match (never hired)'
+    )                            as match_basis,
     count(distinct all_matches.person_key) > 1
                                  as is_ambiguous
 from candidates
