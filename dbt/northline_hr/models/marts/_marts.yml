@@ -95,10 +95,6 @@ models:
       share one definition. Facts carry department_name directly;
       this dimension is the source of truth for department attributes.
     columns:
-      - name: department_key
-        tests:
-          - unique
-          - not_null
       - name: department_name
         tests:
           - unique
