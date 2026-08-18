@@ -2,7 +2,7 @@
 
 An end to end analytics engineering project that solves a problem every HR team has: two systems that both track people, neither of which knows what a person is. Synthetic HR and recruiting data are generated daily, ingested into a warehouse, resolved into a single record per human being, and served to a dashboard that answers headcount and turnover questions the source systems cannot answer on their own.
 
-[View the live dashboard](ADD_LINK_HERE)
+[View the live dashboard](https://datastudio.google.com/s/r_Lk8rb8nA8)
 
 ## Architecture
 
@@ -133,5 +133,5 @@ docs/           source system design, decisions log, credential inventory
 
 ## Links
 
-- [Live dashboard](ADD_LINK_HERE)
-- [Portfolio writeup](ADD_LINK_HERE)
+- [Live dashboard](https://datastudio.google.com/s/r_Lk8rb8nA8)
+- [Portfolio writeup](https://github.com/justinduckett/portfolio/blob/main/people-analytics.md)
