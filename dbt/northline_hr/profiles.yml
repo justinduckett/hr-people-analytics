@@ -1,0 +1,21 @@
+# dbt profile for this project.
+#
+# Lives in the project directory rather than ~/.dbt so it works both
+# locally and in CI. The keyfile path comes from an environment
+# variable, which is set on the local machine in ~/.zshrc and in CI
+# from a repository secret, so neither environment needs its own copy
+# of this file and no credentials are stored here.
+
+northline_hr:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: service-account
+      project: hr-people-analytics-503215
+      dataset: hr_dev
+      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS') }}"
+      location: northamerica-northeast2
+      threads: 4
+      job_execution_timeout_seconds: 300
+      job_retries: 1

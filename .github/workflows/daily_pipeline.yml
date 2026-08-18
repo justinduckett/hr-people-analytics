@@ -1,0 +1,37 @@
+name: Daily pipeline run
+
+# GitHub Actions is only the trigger here. Prefect orchestrates the
+# tasks inside the run and reports state and logs to Prefect Cloud.
+on:
+  schedule:
+    - cron: '0 11 * * *'   # 11:00 UTC daily, about 7am Eastern
+  workflow_dispatch:        # also runnable by hand from the Actions tab
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/gcp-key.json
+      DBT_PROFILES_DIR: ${{ github.workspace }}/dbt/northline_hr
+      PREFECT_API_KEY: ${{ secrets.PREFECT_API_KEY }}
+      PREFECT_API_URL: ${{ secrets.PREFECT_API_URL }}
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write the service account key
+        run: echo '${{ secrets.GCP_SA_KEY }}' > "$GOOGLE_APPLICATION_CREDENTIALS"
+
+      - name: Run the pipeline
+        run: python ingestion/flow.py
