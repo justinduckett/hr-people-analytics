@@ -17,4 +17,5 @@ target/
 dbt_packages/
 
 # Mac system files
-.DS_Store.user.yml
+.DS_Store
+.user.yml
